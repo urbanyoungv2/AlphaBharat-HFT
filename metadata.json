@@ -1,0 +1,5 @@
+{
+  "name": "Alpha_bharat Control Plane",
+  "description": "High-Frequency Trading (HFT) Dashboard for Project Alpha_bharat. Features real-time market data visualization, strategy management with hot-reload simulation, order entry, and AI-driven market analysis using Gemini 2.5 Flash.",
+  "requestFramePermissions": []
+}
