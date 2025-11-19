@@ -71,3 +71,15 @@ export interface ExchangeProfile {
   subscriptionMessage?: string; // JSON string to send on connect
   apiKey?: string;
 }
+
+export interface OrderBookEntry {
+  price: number;
+  size: number;
+}
+
+export interface OrderBook {
+  symbol: string;
+  bids: OrderBookEntry[];
+  asks: OrderBookEntry[];
+  timestamp: number;
+}

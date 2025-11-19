@@ -1,5 +1,5 @@
 
-import { Tick, Order, Side, OrderType, ExchangeProfile } from '../types';
+import { Tick, Order, Side, OrderType, ExchangeProfile, OrderBook, OrderBookEntry } from '../types';
 
 // Unified Interface for all Exchange Adapters
 export interface IExchange {
@@ -11,7 +11,8 @@ export interface IExchange {
   
   // Market Data
   subscribeToTicker(callback: (tick: Tick) => void): void;
-  
+  subscribeToOrderBook(symbol: string, callback: (book: OrderBook) => void): void;
+
   // Order Management
   executeOrder(symbol: string, side: Side, quantity: number, price: number, type: OrderType): Promise<Order>;
 }
@@ -24,8 +25,10 @@ export class SimulationAdapter implements IExchange {
   status: 'CONNECTED' | 'DISCONNECTED' = 'DISCONNECTED';
   
   private intervalId: any = null;
+  private bookIntervalId: any = null;
   private currentPrice = 64000;
   private tickCallback: ((tick: Tick) => void) | null = null;
+  private bookCallback: ((book: OrderBook) => void) | null = null;
 
   constructor(profile: ExchangeProfile) {
     this.profile = profile;
@@ -34,7 +37,9 @@ export class SimulationAdapter implements IExchange {
   async connect(symbol: string): Promise<void> {
     this.status = 'CONNECTED';
     if (this.intervalId) clearInterval(this.intervalId);
+    if (this.bookIntervalId) clearInterval(this.bookIntervalId);
     
+    // Ticker
     this.intervalId = setInterval(() => {
       if (!this.tickCallback) return;
 
@@ -50,15 +55,58 @@ export class SimulationAdapter implements IExchange {
       
       this.tickCallback(tick);
     }, 200); 
+
+    // Order Book (Updates every 500ms)
+    this.bookIntervalId = setInterval(() => {
+        if (!this.bookCallback) return;
+        this.bookCallback(this.generateMockBook(symbol));
+    }, 500);
+  }
+
+  private generateMockBook(symbol: string): OrderBook {
+      const bids: OrderBookEntry[] = [];
+      const asks: OrderBookEntry[] = [];
+      
+      // Generate a tighter spread (0.01% - 0.05%)
+      const spread = this.currentPrice * (0.0001 + Math.random() * 0.0004);
+      const midPrice = this.currentPrice;
+      
+      for (let i = 0; i < 15; i++) {
+          // Bids: Decreasing from Mid - Spread/2
+          const bidPrice = midPrice - (spread / 2) - (i * (Math.random() * 2 + 1));
+          bids.push({
+              price: bidPrice,
+              size: Math.random() * 2.5 + 0.1 + (i * 0.1) // Slight increase in depth further out
+          });
+
+          // Asks: Increasing from Mid + Spread/2
+          const askPrice = midPrice + (spread / 2) + (i * (Math.random() * 2 + 1));
+          asks.push({
+              price: askPrice,
+              size: Math.random() * 2.5 + 0.1 + (i * 0.1)
+          });
+      }
+
+      return {
+          symbol,
+          bids,
+          asks,
+          timestamp: Date.now()
+      };
   }
 
   disconnect(): void {
     if (this.intervalId) clearInterval(this.intervalId);
+    if (this.bookIntervalId) clearInterval(this.bookIntervalId);
     this.status = 'DISCONNECTED';
   }
 
   subscribeToTicker(callback: (tick: Tick) => void): void {
     this.tickCallback = callback;
+  }
+
+  subscribeToOrderBook(symbol: string, callback: (book: OrderBook) => void): void {
+      this.bookCallback = callback;
   }
 
   async executeOrder(symbol: string, side: Side, quantity: number, price: number, type: OrderType): Promise<Order> {
@@ -85,6 +133,7 @@ export class BinanceAdapter implements IExchange {
   
   private ws: WebSocket | null = null;
   private tickCallback: ((tick: Tick) => void) | null = null;
+  private bookCallback: ((book: OrderBook) => void) | null = null;
 
   constructor(profile: ExchangeProfile) {
     this.profile = profile;
@@ -93,7 +142,8 @@ export class BinanceAdapter implements IExchange {
   async connect(symbol: string): Promise<void> {
     this.status = 'CONNECTING';
     const cleanSymbol = symbol.replace(/[-_]/g, '').toLowerCase(); 
-    const wsUrl = `wss://stream.binance.com:9443/ws/${cleanSymbol}@trade`;
+    // Combined stream: trade + depth20 (100ms)
+    const wsUrl = `wss://stream.binance.com:9443/stream?streams=${cleanSymbol}@trade/${cleanSymbol}@depth20@100ms`;
 
     return new Promise((resolve, reject) => {
       this.ws = new WebSocket(wsUrl);
@@ -104,15 +154,36 @@ export class BinanceAdapter implements IExchange {
       };
 
       this.ws.onmessage = (event) => {
-        if (!this.tickCallback) return;
         try {
-          const data = JSON.parse(event.data);
-          this.tickCallback({
-            symbol: data.s,
-            price: parseFloat(data.p),
-            quantity: parseFloat(data.q),
-            timestamp: data.E
-          });
+          const msg = JSON.parse(event.data);
+          if (!msg.data) return;
+          
+          const stream = msg.stream;
+          const data = msg.data;
+
+          // Ticker Logic
+          if (stream.endsWith('@trade') && this.tickCallback) {
+              this.tickCallback({
+                symbol: data.s,
+                price: parseFloat(data.p),
+                quantity: parseFloat(data.q),
+                timestamp: data.E
+              });
+          }
+
+          // Order Book Logic
+          if (stream.endsWith('@depth20@100ms') && this.bookCallback) {
+              const bids = data.bids.map((b: any) => ({ price: parseFloat(b[0]), size: parseFloat(b[1]) }));
+              const asks = data.asks.map((a: any) => ({ price: parseFloat(a[0]), size: parseFloat(a[1]) }));
+              
+              this.bookCallback({
+                  symbol: symbol,
+                  bids,
+                  asks,
+                  timestamp: Date.now()
+              });
+          }
+
         } catch (e) { /* ignore parse errors */ }
       };
 
@@ -139,6 +210,10 @@ export class BinanceAdapter implements IExchange {
   subscribeToTicker(callback: (tick: Tick) => void): void {
     this.tickCallback = callback;
   }
+  
+  subscribeToOrderBook(symbol: string, callback: (book: OrderBook) => void): void {
+    this.bookCallback = callback;
+  }
 
   async executeOrder(symbol: string, side: Side, quantity: number, price: number, type: OrderType): Promise<Order> {
     await new Promise(resolve => setTimeout(resolve, 150));
@@ -164,6 +239,7 @@ export class CoinbaseAdapter implements IExchange {
   
   private ws: WebSocket | null = null;
   private tickCallback: ((tick: Tick) => void) | null = null;
+  private bookCallback: ((book: OrderBook) => void) | null = null;
 
   constructor(profile: ExchangeProfile) {
     this.profile = profile;
@@ -181,23 +257,37 @@ export class CoinbaseAdapter implements IExchange {
         const subscribeMsg = {
           type: 'subscribe',
           product_ids: [cleanSymbol],
-          channels: ['ticker']
+          channels: ['ticker', 'level2'] // level2 is full book
         };
         this.ws?.send(JSON.stringify(subscribeMsg));
         resolve();
       };
 
       this.ws.onmessage = (event) => {
-        if (!this.tickCallback) return;
         try {
             const data = JSON.parse(event.data);
-            if (data.type !== 'ticker') return;
-            this.tickCallback({
-              symbol: data.product_id,
-              price: parseFloat(data.price),
-              quantity: parseFloat(data.last_size),
-              timestamp: new Date(data.time).getTime()
-            });
+            
+            if (data.type === 'ticker' && this.tickCallback) {
+                this.tickCallback({
+                    symbol: data.product_id,
+                    price: parseFloat(data.price),
+                    quantity: parseFloat(data.last_size),
+                    timestamp: new Date(data.time).getTime()
+                });
+            }
+
+            // Simplified Snapshot handling for demo (full L2 updates are complex for a single file)
+            if (data.type === 'snapshot' && this.bookCallback) {
+                 const bids = data.bids.slice(0, 20).map((b: any) => ({ price: parseFloat(b[0]), size: parseFloat(b[1]) }));
+                 const asks = data.asks.slice(0, 20).map((a: any) => ({ price: parseFloat(a[0]), size: parseFloat(a[1]) }));
+                 this.bookCallback({
+                     symbol: data.product_id,
+                     bids,
+                     asks,
+                     timestamp: Date.now()
+                 });
+            }
+            // Ignore l2update for this lightweight adapter
         } catch (e) { /* ignore */ }
       };
 
@@ -222,6 +312,10 @@ export class CoinbaseAdapter implements IExchange {
 
   subscribeToTicker(callback: (tick: Tick) => void): void {
     this.tickCallback = callback;
+  }
+  
+  subscribeToOrderBook(symbol: string, callback: (book: OrderBook) => void): void {
+      this.bookCallback = callback;
   }
 
   async executeOrder(symbol: string, side: Side, quantity: number, price: number, type: OrderType): Promise<Order> {
@@ -248,6 +342,7 @@ export class CustomExchangeAdapter implements IExchange {
   
   private ws: WebSocket | null = null;
   private tickCallback: ((tick: Tick) => void) | null = null;
+  private bookCallback: ((book: OrderBook) => void) | null = null;
 
   constructor(profile: ExchangeProfile) {
     this.profile = profile;
@@ -270,7 +365,6 @@ export class CustomExchangeAdapter implements IExchange {
       this.ws.onopen = () => {
         this.status = 'CONNECTED';
         if (this.profile.subscriptionMessage) {
-           // Inject symbol into placeholder if present
            const msg = this.profile.subscriptionMessage.replace('{{SYMBOL}}', symbol);
            try {
              this.ws?.send(msg);
@@ -282,28 +376,27 @@ export class CustomExchangeAdapter implements IExchange {
       };
 
       this.ws.onmessage = (event) => {
-        if (!this.tickCallback) return;
-        try {
-           const data = JSON.parse(event.data);
-           
-           // Heuristic Parsing for Generic JSON
-           // We look for common keys for price and quantity
-           const price = this.findValue(data, ['p', 'price', 'last', 'c', 'ask', 'bid']);
-           const qty = this.findValue(data, ['q', 'quantity', 'qty', 'size', 'v', 'vol']);
-           
-           if (price !== undefined) {
-             this.tickCallback({
-               symbol: symbol,
-               price: parseFloat(price),
-               quantity: qty !== undefined ? parseFloat(qty) : 0,
-               timestamp: Date.now()
-             });
-           }
-        } catch (e) { /* ignore non-json */ }
+        // Generic logic remains for Ticks
+        if (this.tickCallback) {
+            try {
+                const data = JSON.parse(event.data);
+                const price = this.findValue(data, ['p', 'price', 'last', 'c', 'ask', 'bid']);
+                const qty = this.findValue(data, ['q', 'quantity', 'qty', 'size', 'v', 'vol']);
+                
+                if (price !== undefined) {
+                    this.tickCallback({
+                    symbol: symbol,
+                    price: parseFloat(price),
+                    quantity: qty !== undefined ? parseFloat(qty) : 0,
+                    timestamp: Date.now()
+                    });
+                }
+            } catch(e) {}
+        }
+        // Custom Order book logic is too complex for generic json parsing without JSONPath config
       };
 
       this.ws.onerror = (err) => {
-        console.error('Custom WS Error', err);
         this.status = 'ERROR';
         reject(err);
       };
@@ -319,7 +412,6 @@ export class CustomExchangeAdapter implements IExchange {
     for (const key of keys) {
         if (obj[key] !== undefined) return obj[key];
     }
-    // Deep search limited to 1 level (e.g. data.price)
     for (const k in obj) {
         if (typeof obj[k] === 'object' && obj[k] !== null) {
             for (const key of keys) {
@@ -340,6 +432,10 @@ export class CustomExchangeAdapter implements IExchange {
 
   subscribeToTicker(callback: (tick: Tick) => void): void {
     this.tickCallback = callback;
+  }
+
+  subscribeToOrderBook(symbol: string, callback: (book: OrderBook) => void): void {
+    this.bookCallback = callback;
   }
 
   async executeOrder(symbol: string, side: Side, quantity: number, price: number, type: OrderType): Promise<Order> {

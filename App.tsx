@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Tick, Strategy, StrategyStatus, LogEntry, Order, Position, Side, OrderType, ExchangeProfile } from './types';
+import { Tick, Strategy, StrategyStatus, LogEntry, Order, Position, Side, OrderType, ExchangeProfile, OrderBook } from './types';
 import { ChartWidget } from './components/ChartWidget';
 import { StrategyControl } from './components/StrategyControl';
 import { LogPanel } from './components/LogPanel';
@@ -41,6 +41,9 @@ export default function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const [ticks, setTicks] = useState<Tick[]>([]);
+  // New State for Order Book
+  const [orderBook, setOrderBook] = useState<OrderBook>({ symbol: DEFAULT_SYMBOL, bids: [], asks: [], timestamp: Date.now() });
+  
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [strategies, setStrategies] = useState<Strategy[]>([
     { id: 'ST-001', name: 'MarketMaker_L1', language: 'Rust', status: StrategyStatus.RUNNING, pnl: 12450.50, latency: 12, memoryUsage: 64 },
@@ -49,7 +52,6 @@ export default function App() {
   ]);
   
   // Portfolio State (Multi-Asset)
-  // Initialized with a hidden ETH position to demonstrate correlation checks
   const [portfolio, setPortfolio] = useState<Record<string, Position>>({
       'ETHUSDT': { symbol: 'ETHUSDT', quantity: 150, averagePrice: 3200, marketValue: 480000 },
       [DEFAULT_SYMBOL]: { symbol: DEFAULT_SYMBOL, quantity: 0, averagePrice: 0, marketValue: 0 }
@@ -98,13 +100,14 @@ export default function App() {
       
       addLog('INFO', 'System', `Initializing connection to ${currentProfile.name}...`);
 
+      // Ticker Sub
       newExchange.subscribeToTicker((tick) => {
         setTicks(prev => {
           const newHistory = [...prev, tick];
           return newHistory.length > 100 ? newHistory.slice(-100) : newHistory;
         });
 
-        // Update real-time market value for the active symbol
+        // Update real-time market value
         setPortfolio(prev => {
             const currentPos = prev[tick.symbol] || { symbol: tick.symbol, quantity: 0, averagePrice: 0, marketValue: 0 };
             return {
@@ -125,6 +128,11 @@ export default function App() {
           }
           return s;
         }));
+      });
+
+      // OrderBook Sub
+      newExchange.subscribeToOrderBook(DEFAULT_SYMBOL, (book) => {
+         setOrderBook(book);
       });
 
       try {
@@ -247,7 +255,6 @@ export default function App() {
   const lastPrice = ticks.length > 0 ? ticks[ticks.length - 1].price : 0;
   const currentPosition = portfolio[DEFAULT_SYMBOL];
 
-  // Calculate group exposures for UI
   const groupExposures = useMemo(() => {
      const groups: Record<string, number> = {};
      const config = riskManager.getConfig();
@@ -277,7 +284,7 @@ export default function App() {
       <header className="h-12 border-b border-terminal-border bg-terminal-bg flex items-center justify-between px-4 shrink-0">
         <div className="flex items-center gap-3">
           <Activity className="text-terminal-green" />
-          <h1 className="font-bold text-lg tracking-tight">ALPHA_BHARAT <span className="text-xs font-mono text-gray-500">v2.7.1-RISK-CORE</span></h1>
+          <h1 className="font-bold text-lg tracking-tight">ALPHA_BHARAT <span className="text-xs font-mono text-gray-500">v2.8.0-HISTORY</span></h1>
         </div>
         
         <div className="flex items-center gap-4">
@@ -344,7 +351,11 @@ export default function App() {
         {/* Middle Col: Charts & AI */}
         <div className="col-span-6 row-span-12 flex flex-col gap-2 min-h-0">
           <div className="flex-[2] min-h-0">
-            <ChartWidget data={ticks} symbol={DEFAULT_SYMBOL} />
+            <ChartWidget 
+               data={ticks} 
+               symbol={DEFAULT_SYMBOL} 
+               orderBook={orderBook}
+            />
           </div>
           
           <div className="flex-1 bg-terminal-dark border border-terminal-border rounded p-3 flex flex-col min-h-0">
@@ -402,7 +413,6 @@ export default function App() {
                     <span>Avg Px: ${currentPosition.averagePrice.toFixed(2)}</span>
                     <span>Last: ${lastPrice.toFixed(2)}</span>
                  </div>
-                 {/* Debug view of hidden portfolio */}
                  <div className="mt-2 pt-1 border-t border-gray-800 text-gray-600">
                     <div className="flex justify-between">
                         <span>Total Crypto Exp:</span>
