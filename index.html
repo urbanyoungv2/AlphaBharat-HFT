@@ -2,27 +2,43 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Alpha_bharat | HFT Console</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Alpha_bharat | Pro Terminal</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <script>
       tailwind.config = {
         theme: {
           extend: {
             colors: {
-              terminal: {
-                bg: '#0d1117',
-                dark: '#010409',
-                border: '#30363d',
-                text: '#c9d1d9',
-                green: '#2ea043',
-                red: '#da3633',
-                blue: '#58a6ff',
-                yellow: '#d29922',
+              // Professional Dark Theme Palette (Zinc based)
+              surface: {
+                950: '#09090b', // Main Background
+                900: '#18181b', // Card Background
+                800: '#27272a', // Border/Hover
+                700: '#3f3f46', // Muted Element
+              },
+              brand: {
+                blue: '#3b82f6',
+                glow: 'rgba(59, 130, 246, 0.15)'
+              },
+              trade: {
+                up: '#10b981',    // Emerald 500
+                down: '#ef4444',  // Red 500
+                warn: '#f59e0b',  // Amber 500
+              },
+              text: {
+                primary: '#e4e4e7', // Zinc 200
+                secondary: '#a1a1aa', // Zinc 400
+                muted: '#52525b',     // Zinc 600
               }
             },
             fontFamily: {
-              mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', "Liberation Mono", "Courier New", 'monospace'],
+              sans: ['Inter', 'sans-serif'],
+              mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+            },
+            fontSize: {
+              'xxs': '0.65rem',
             }
           }
         }
@@ -30,23 +46,41 @@
     </script>
     <style>
       body {
-        background-color: #0d1117;
-        color: #c9d1d9;
+        background-color: #09090b;
+        color: #e4e4e7;
+        font-family: 'Inter', sans-serif;
+        -webkit-font-smoothing: antialiased;
       }
-      /* Custom Scrollbar */
+      
+      /* Glass effect for overlays */
+      .glass {
+        background: rgba(24, 24, 27, 0.7);
+        backdrop-filter: blur(8px);
+      }
+
+      /* Custom Scrollbar - Slim & Dark */
       ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
+        width: 6px;
+        height: 6px;
       }
       ::-webkit-scrollbar-track {
-        background: #0d1117; 
+        background: transparent; 
       }
       ::-webkit-scrollbar-thumb {
-        background: #30363d; 
-        border-radius: 4px;
+        background: #3f3f46; 
+        border-radius: 3px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #58a6ff; 
+        background: #52525b; 
+      }
+
+      /* Utility for hiding scrollbar but keeping functionality */
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
       }
     </style>
   <script type="importmap">

@@ -1,58 +1,58 @@
-
 import React from 'react';
 import { RiskConfig } from '../services/RiskManager';
-import { ShieldCheck, AlertTriangle, PieChart } from 'lucide-react';
+import { ShieldCheck, AlertTriangle, PieChart, Lock } from 'lucide-react';
 
 interface RiskStatusProps {
   config: RiskConfig;
-  currentExposure: number; // Global exposure or single symbol? Let's assume main symbol for now, or sum.
+  currentExposure: number;
   globalPnL: number;
-  groupExposures?: Record<string, number>; // Map of group ID to current exposure
+  groupExposures?: Record<string, number>;
 }
 
 export const RiskStatus: React.FC<RiskStatusProps> = ({ config, currentExposure, globalPnL, groupExposures = {} }) => {
   const exposurePct = Math.min((currentExposure / config.maxPositionSizeUSD) * 100, 100);
   const globalLoss = Math.abs(Math.min(globalPnL, 0));
   const lossPct = Math.min((globalLoss / config.maxGlobalDailyLoss) * 100, 100);
+  const isHalted = lossPct >= 100;
 
   return (
-    <div className="bg-terminal-dark border border-terminal-border rounded p-3 flex flex-col gap-3 h-full">
-      <div className="flex justify-between items-center border-b border-terminal-border pb-2 shrink-0">
-        <h3 className="font-bold text-sm text-gray-200 flex items-center gap-2">
-          {lossPct >= 100 ? <AlertTriangle size={16} className="text-terminal-red" /> : <ShieldCheck size={16} className="text-terminal-green" />}
-          Risk Manager
+    <div className={`bg-surface-900 border ${isHalted ? 'border-trade-down/50' : 'border-surface-800'} rounded-lg p-4 flex flex-col gap-4 h-full shadow-sm transition-colors`}>
+      <div className="flex justify-between items-center border-b border-surface-800 pb-3 shrink-0">
+        <h3 className="font-semibold text-sm text-text-primary flex items-center gap-2">
+          {isHalted ? <AlertTriangle size={18} className="text-trade-down" /> : <ShieldCheck size={18} className="text-trade-up" />}
+          Risk Engine
         </h3>
-        <div className={`text-[10px] font-mono px-2 py-0.5 rounded ${lossPct >= 100 ? 'bg-red-900 text-white' : 'bg-gray-800 text-gray-500'}`}>
-          {lossPct >= 100 ? 'HALTED' : 'ACTIVE'}
+        <div className={`text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 ${isHalted ? 'bg-trade-down/20 text-trade-down border border-trade-down/30' : 'bg-trade-up/10 text-trade-up border border-trade-up/30'}`}>
+          {isHalted ? <><Lock size={10} /> SYSTEM HALTED</> : 'MONITORING ACTIVE'}
         </div>
       </div>
       
-      <div className="space-y-3 font-mono text-xs flex-1 overflow-y-auto pr-1">
-        {/* Primary Instrument Exposure */}
+      <div className="space-y-4 flex-1 overflow-y-auto pr-1 custom-scrollbar">
+        {/* Single Instrument Exposure */}
         <div>
-          <div className="flex justify-between text-gray-400 mb-1">
-            <span>Active Symbol Exp.</span>
-            <span>${currentExposure.toLocaleString()}</span>
+          <div className="flex justify-between items-end mb-1.5">
+            <span className="text-xs text-text-secondary">Position Limit</span>
+            <span className="text-xs font-mono text-text-primary">${currentExposure.toLocaleString()} <span className="text-text-muted">/ ${config.maxPositionSizeUSD.toLocaleString()}</span></span>
           </div>
-          <div className="h-1.5 w-full bg-gray-800 rounded overflow-hidden">
+          <div className="h-2 w-full bg-surface-950 rounded-full overflow-hidden border border-surface-800">
             <div 
-              className={`h-full transition-all duration-500 ${exposurePct > 85 ? 'bg-terminal-red' : exposurePct > 60 ? 'bg-terminal-yellow' : 'bg-terminal-blue'}`} 
+              className={`h-full transition-all duration-700 ease-out rounded-full ${exposurePct > 90 ? 'bg-trade-down' : exposurePct > 70 ? 'bg-trade-warn' : 'bg-brand-blue'}`} 
               style={{ width: `${exposurePct}%` }}
             />
           </div>
         </div>
 
-        {/* Drawdown Bar */}
+        {/* Drawdown Limit */}
         <div>
-          <div className="flex justify-between text-gray-400 mb-1">
-            <span>Global Daily Loss</span>
-            <span className={globalPnL < 0 ? 'text-terminal-red' : 'text-gray-300'}>
-               -${globalLoss.toLocaleString()} / ${config.maxGlobalDailyLoss.toLocaleString()}
+          <div className="flex justify-between items-end mb-1.5">
+            <span className="text-xs text-text-secondary">Daily Drawdown</span>
+            <span className={`text-xs font-mono font-bold ${globalLoss > 0 ? 'text-trade-down' : 'text-text-muted'}`}>
+               ${globalLoss.toLocaleString()} <span className="text-text-muted font-normal">/ ${config.maxGlobalDailyLoss.toLocaleString()}</span>
             </span>
           </div>
-          <div className="h-1.5 w-full bg-gray-800 rounded overflow-hidden">
+          <div className="h-2 w-full bg-surface-950 rounded-full overflow-hidden border border-surface-800">
             <div 
-              className={`h-full transition-all duration-500 ${lossPct >= 100 ? 'bg-terminal-red' : lossPct > 70 ? 'bg-terminal-yellow' : 'bg-terminal-green'}`} 
+              className={`h-full transition-all duration-700 ease-out rounded-full ${lossPct >= 100 ? 'bg-trade-down' : lossPct > 75 ? 'bg-trade-warn' : 'bg-trade-up'}`} 
               style={{ width: `${lossPct}%` }}
             />
           </div>
@@ -60,42 +60,32 @@ export const RiskStatus: React.FC<RiskStatusProps> = ({ config, currentExposure,
         
         {/* Correlation Groups */}
         {config.correlationGroups.length > 0 && (
-          <div className="border-t border-gray-800 pt-2">
-             <div className="flex items-center gap-1 text-gray-500 mb-2">
-                <PieChart size={10} /> <span className="uppercase text-[10px]">Sector Usage</span>
+          <div className="bg-surface-950 rounded-md p-3 border border-surface-800">
+             <div className="flex items-center gap-2 text-text-muted mb-3">
+                <PieChart size={12} /> <span className="uppercase text-[10px] font-bold tracking-wider">Sector Exposure</span>
              </div>
-             {config.correlationGroups.map(group => {
-                const currentVal = groupExposures[group.id] || 0;
-                const pct = Math.min((currentVal / group.maxExposureUSD) * 100, 100);
-                return (
-                    <div key={group.id} className="mb-2">
-                        <div className="flex justify-between text-[10px] text-gray-400">
-                            <span>{group.name}</span>
-                            <span>{pct.toFixed(1)}%</span>
+             <div className="space-y-3">
+                {config.correlationGroups.map(group => {
+                    const currentVal = groupExposures[group.id] || 0;
+                    const pct = Math.min((currentVal / group.maxExposureUSD) * 100, 100);
+                    return (
+                        <div key={group.id}>
+                            <div className="flex justify-between text-[10px] text-text-secondary mb-1">
+                                <span>{group.name}</span>
+                                <span className="font-mono">{pct.toFixed(1)}%</span>
+                            </div>
+                            <div className="h-1.5 w-full bg-surface-900 rounded-full overflow-hidden">
+                                <div 
+                                    className={`h-full transition-all duration-500 rounded-full ${pct > 90 ? 'bg-trade-down' : 'bg-purple-500'}`} 
+                                    style={{ width: `${pct}%` }}
+                                />
+                            </div>
                         </div>
-                         <div className="h-1 w-full bg-gray-800 rounded overflow-hidden mt-0.5">
-                            <div 
-                                className={`h-full transition-all duration-500 ${pct > 90 ? 'bg-terminal-red' : 'bg-purple-500'}`} 
-                                style={{ width: `${pct}%` }}
-                            />
-                        </div>
-                    </div>
-                );
-             })}
+                    );
+                })}
+             </div>
           </div>
         )}
-
-        {/* Limits Grid */}
-        <div className="grid grid-cols-2 gap-2 pt-1 text-[10px] text-gray-500">
-            <div className="bg-[#0d1117] p-1.5 rounded border border-gray-800 flex flex-col">
-                <span className="text-gray-600 uppercase">Max Order</span>
-                <span className="text-gray-300">${config.maxOrderValue.toLocaleString()}</span>
-            </div>
-            <div className="bg-[#0d1117] p-1.5 rounded border border-gray-800 flex flex-col">
-                <span className="text-gray-600 uppercase">Strat Limit</span>
-                <span className="text-gray-300">${config.maxDailyLossPerStrategy.toLocaleString()}</span>
-            </div>
-        </div>
       </div>
     </div>
   );
